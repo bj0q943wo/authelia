@@ -1,0 +1,63 @@
+# Release pipeline for authelia
+# Triggered when a new tag is pushed matching v*
+
+steps:
+  - label: ":docker: Build & Push Release Image"
+    key: docker-release
+    command:
+      - echo "--- Building release image for tag $BUILDKITE_TAG"
+      - docker buildx create --use --name multiarch || true
+      - docker buildx build
+          --platform linux/amd64,linux/arm64,linux/arm/v7
+          --tag ghcr.io/authelia/authelia:$BUILDKITE_TAG
+          --tag ghcr.io/authelia/authelia:latest
+          --push
+          .
+    plugins:
+      - docker-login#v2.1.0:
+          username: $GHCR_USERNAME
+          password-env: GHCR_TOKEN
+          server: ghcr.io
+    agents:
+      queue: release
+    timeout_in_minutes: 60
+
+  - label: ":package: Build Binaries"
+    key: build-binaries
+    command:
+      - echo "--- Building binaries for $BUILDKITE_TAG"
+      - make build-all
+    artifact_paths:
+      - "dist/**/*"
+    agents:
+      queue: release
+    timeout_in_minutes: 30
+
+  - wait
+
+  - label: ":github: Create GitHub Release"
+    key: github-release
+    depends_on:
+      - docker-release
+      - build-binaries
+    command:
+      - echo "--- Creating GitHub release for $BUILDKITE_TAG"
+      - buildkite-agent artifact download "dist/**/*" dist/
+      - gh release create $BUILDKITE_TAG
+          --title "Authelia $BUILDKITE_TAG"
+          --notes-file CHANGELOG.md
+          dist/**/*
+    agents:
+      queue: release
+    timeout_in_minutes: 15
+
+  - label: ":bell: Notify Release"
+    depends_on:
+      - github-release
+    command:
+      - echo "Release $BUILDKITE_TAG completed successfully"
+    notify:
+      - slack:
+          channels:
+            - "#releases"
+          message: ":rocket: Authelia *$BUILDKITE_TAG* has been released!"
