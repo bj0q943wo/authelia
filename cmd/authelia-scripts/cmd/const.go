@@ -35,6 +35,10 @@ const (
 	txtRunningSuite   = "Running suite ("
 )
 
+var (
+	buildkitePrivatePipelines = []string{"authelia-cve"}
+)
+
 const fmtLDFLAGSX = "-X 'github.com/authelia/authelia/v4/internal/utils.%s=%s'"
 
 const (

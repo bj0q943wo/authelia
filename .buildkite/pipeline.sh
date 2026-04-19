@@ -31,6 +31,12 @@ else
   CI_BYPASS="false"
 fi
 
+if [[ ${BUILDKITE_PIPELINE_SLUG} == "authelia-cve" ]]; then
+  CI_PRIVATE="true"
+else
+  CI_PRIVATE="false"
+fi
+
 CI_MERGE_QUEUE="false"
 CI_MERGE_QUEUE_BYPASS="false"
 
@@ -52,6 +58,7 @@ env:
   BUILD_HAPROXY: ${BUILD_HAPROXY}
   BUILD_SAMBA: ${BUILD_SAMBA}
   CI_BYPASS: ${CI_BYPASS}
+  CI_PRIVATE: ${CI_PRIVATE}
   CI_MERGE_QUEUE: ${CI_MERGE_QUEUE}
   CI_MERGE_QUEUE_BYPASS: ${CI_MERGE_QUEUE_BYPASS}
 
@@ -214,11 +221,11 @@ cat << EOF
     agents:
       upload: "fast"
     key: "artifacts"
-    if: build.tag != null && build.env("CI_BYPASS") != "true"
+    if: build.tag != null && build.env("CI_BYPASS") != "true" && build.env("CI_PRIVATE") != "true"
 
   - label: ":linux: Deploy AUR"
     command: "aurpackages.sh | buildkite-agent pipeline upload"
-    if: build.tag != null && build.env("CI_BYPASS") != "true"
+    if: build.tag != null && build.env("CI_BYPASS") != "true" && build.env("CI_PRIVATE") != "true"
 
   - label: ":debian: :fedora: :ubuntu: Deploy APT"
     command: "aptdeploy.sh"
@@ -226,5 +233,5 @@ cat << EOF
       - "unit-test"
     agents:
       upload: "fast"
-    if: build.tag != null && build.env("CI_BYPASS") != "true"
+    if: build.tag != null && build.env("CI_BYPASS") != "true" && build.env("CI_PRIVATE") != "true"
 EOF
