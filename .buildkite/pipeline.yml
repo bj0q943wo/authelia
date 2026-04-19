@@ -1,17 +1,80 @@
----
-# This represents the hardcoded pipeline set in Buildkite interface which executes the repo provided dynamic pipeline.
-# It is used to ensure that insecure code from external PR cannot be executed before a maintainers approval, to avoid
-# secret leaks.
+# Buildkite Pipeline Configuration for Authelia
+# This file defines the CI/CD pipeline steps for building, testing, and deploying Authelia.
+
+env:
+  DOCKER_BUILDKIT: 1
+  BUILDKITE_CLEAN_CHECKOUT: true
+
 steps:
-  # Manual intervention by team required to deploy for forked PRs (prevent secret leakage).
-  - block: "Public fork needs approval"
-    if: build.pull_request.repository.fork == true
+  - label: ":lint: Lint"
+    key: lint
+    command: "make lint"
+    plugins:
+      - docker#v5.9.0:
+          image: "golang:1.21-alpine"
+          environment:
+            - GOPATH
+            - GOCACHE
+          volumes:
+            - "/go/pkg/mod:/go/pkg/mod"
+    agents:
+      queue: default
 
-  # Pipeline for all others (tagged commits/local branches/PRs).
-  - label: ":pipeline: Setup Pipeline"
-    command: ".buildkite/pipeline.sh | buildkite-agent pipeline upload"
+  - label: ":test: Unit Tests"
+    key: unit-test
+    command: "make test"
+    plugins:
+      - docker#v5.9.0:
+          image: "golang:1.21-alpine"
+          environment:
+            - GOPATH
+            - GOCACHE
+          volumes:
+            - "/go/pkg/mod:/go/pkg/mod"
+    agents:
+      queue: default
+    artifact_paths:
+      - "coverage.out"
+      - "coverage.html"
 
-notify:
-  - webhook: "<REDACTED WEBHOOK_URL>"
-    if: build.state == "blocked"
-...
+  - wait: ~
+    continue_on_failure: false
+
+  - label: ":docker: Build Docker Image"
+    key: build-docker
+    command: "make docker-build"
+    agents:
+      queue: default
+    env:
+      DOCKER_BUILDKIT: 1
+
+  - label: ":docker: Build Docker Arm64 Image"
+    key: build-docker-arm64
+    command: "make docker-build-arm64"
+    agents:
+      queue: arm64
+    env:
+      DOCKER_BUILDKIT: 1
+
+  - wait: ~
+    continue_on_failure: false
+
+  - label: ":rocket: Integration Tests"
+    key: integration-test
+    command: ".buildkite/scripts/integration-test.sh"
+    agents:
+      queue: default
+    artifact_paths:
+      - "test/logs/**/*"
+
+  - block: ":shipit: Deploy to Staging?"
+    key: deploy-staging-gate
+    branches: "main"
+
+  - label: ":shipit: Deploy to Staging"
+    key: deploy-staging
+    command: ".buildkite/scripts/deploy.sh staging"
+    depends_on: deploy-staging-gate
+    branches: "main"
+    agents:
+      queue: default
