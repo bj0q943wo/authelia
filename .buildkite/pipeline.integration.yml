@@ -1,0 +1,79 @@
+# Integration test pipeline for Authelia
+# Runs suite of integration tests against various backends and configurations
+
+env:
+  BUILDKITE_PARALLEL_JOB_COUNT: 6
+
+steps:
+  - label: ":docker: Build Integration Image"
+    key: "build-integration"
+    command: "./buildkite/scripts/build-integration-image.sh"
+    plugins:
+      - docker-compose#v4.16.0:
+          build: authelia
+          image-repository: authelia/authelia-testing
+    agents:
+      queue: "docker"
+
+  - wait
+
+  - label: ":postgresql: PostgreSQL Backend"
+    key: "integration-postgres"
+    command: "./buildkite/scripts/run-integration.sh"
+    env:
+      STORAGE_BACKEND: "postgres"
+      SESSION_BACKEND: "redis"
+    plugins:
+      - docker-compose#v4.16.0:
+          run: integration
+          config: docker-compose.integration.yml
+    agents:
+      queue: "integration"
+
+  - label: ":mysql: MySQL Backend"
+    key: "integration-mysql"
+    command: "./buildkite/scripts/run-integration.sh"
+    env:
+      STORAGE_BACKEND: "mysql"
+      SESSION_BACKEND: "redis"
+    plugins:
+      - docker-compose#v4.16.0:
+          run: integration
+          config: docker-compose.integration.yml
+    agents:
+      queue: "integration"
+
+  - label: ":sqlite: SQLite Backend"
+    key: "integration-sqlite"
+    command: "./buildkite/scripts/run-integration.sh"
+    env:
+      STORAGE_BACKEND: "sqlite"
+      SESSION_BACKEND: "memory"
+    plugins:
+      - docker-compose#v4.16.0:
+          run: integration
+          config: docker-compose.integration.yml
+    agents:
+      queue: "integration"
+
+  - label: ":redis: Redis Sentinel"
+    key: "integration-redis-sentinel"
+    command: "./buildkite/scripts/run-integration.sh"
+    env:
+      STORAGE_BACKEND: "postgres"
+      SESSION_BACKEND: "redis_sentinel"
+    plugins:
+      - docker-compose#v4.16.0:
+          run: integration
+          config: docker-compose.integration.yml
+    agents:
+      queue: "integration"
+
+  - wait
+
+  - label: ":bar_chart: Publish Integration Results"
+    key: "publish-results"
+    command: "./buildkite/annotations/artifacts.sh"
+    allow_dependency_failure: true
+    agents:
+      queue: "default"
